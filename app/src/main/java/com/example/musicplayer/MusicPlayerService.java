@@ -33,7 +33,6 @@ public class MusicPlayerService extends Service {
 
     public final static String[] supportedFormats = {
             ".mp3",
-            ".mp4",
             ".wav"
     };
 
