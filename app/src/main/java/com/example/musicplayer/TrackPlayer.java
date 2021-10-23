@@ -7,6 +7,7 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
+import android.graphics.Bitmap;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
@@ -14,12 +15,14 @@ import android.os.Looper;
 import android.os.Message;
 import android.view.View;
 import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.SeekBar;
 import android.widget.TextView;
 
 import java.io.File;
 
 public class TrackPlayer extends AppCompatActivity {
+    ImageView thumbNail;
     ImageButton prevButton;
     ImageButton nextButton;
     ImageButton playButton;
@@ -44,11 +47,14 @@ public class TrackPlayer extends AppCompatActivity {
         nextButton = findViewById(R.id.next_button);
         playButton = findViewById(R.id.play_button);
         musicText = findViewById(R.id.music_name);
+        thumbNail = findViewById(R.id.music_thumbnail);
+
+        musicText.setSelected(true);
 
         Intent intent = getIntent();
         File currentTrack = new File(intent.getStringExtra("CURRENT_TRACK"));
 
-        musicText.setText(currentTrack.getName());
+        updateUI(currentTrack);
 
         playButton.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -71,7 +77,6 @@ public class TrackPlayer extends AppCompatActivity {
                     File previousTrack = DirectoryTrackManager.getInstance().getPreviousTrack(musicPlayerService.getCurrentTrack());
                     if(previousTrack!= null){
                         musicPlayerService.playMusic(previousTrack);
-                        musicText.setText(previousTrack.getName());
                     }
                 }
             }
@@ -84,7 +89,6 @@ public class TrackPlayer extends AppCompatActivity {
                     File nextTrack = DirectoryTrackManager.getInstance().getNextTrack(musicPlayerService.getCurrentTrack());
                     if(nextTrack!= null){
                         musicPlayerService.playMusic(nextTrack);
-                        musicText.setText(nextTrack.getName());
                     }
                 }
             }
@@ -105,8 +109,8 @@ public class TrackPlayer extends AppCompatActivity {
                         double newPos = (Double.valueOf(pos) / Double.valueOf(duration)) * Double.valueOf(SEEK_BAR_MAX_VALUE);
                         seekBar.setProgress((int)newPos);
                     }
-                    seekBarHandler.postDelayed(this, 10);
                 }
+                seekBarHandler.postDelayed(this, 10);
             }
         }, 10);
 
@@ -144,6 +148,8 @@ public class TrackPlayer extends AppCompatActivity {
             MusicPlayerService.MusicPlayerBinder binder = (MusicPlayerService.MusicPlayerBinder) _binder;
             musicPlayerService = binder.getService();
             bound = true;
+
+            musicPlayerService.addStateChangeListener(listener);
         }
 
         @Override
@@ -157,6 +163,14 @@ public class TrackPlayer extends AppCompatActivity {
         super.onStart();
         Intent intent = new Intent(getApplicationContext(), MusicPlayerService.class);
         bindService(intent, connection, Context.BIND_AUTO_CREATE);
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if(bound){
+            musicPlayerService.removeStateChangeListener(this);
+        }
     }
 
     class SeekBarThread extends Thread{
@@ -174,4 +188,30 @@ public class TrackPlayer extends AppCompatActivity {
             Looper.loop();
         }
     }
+
+    private void updateUI(File track){
+        musicText.setText(track.getName());
+
+        MetaDataGetter.MetaDataRequester requester = new MetaDataGetter.MetaDataRequester(track){
+            @Override
+            public void onGotMetaData(Bitmap art) {
+                if(art != null){
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            thumbNail.setImageBitmap(art);
+                        }
+                    });
+                }
+            }
+        };
+        MetaDataGetter.getInstance().requestMetaData(requester);
+    }
+
+    private MusicPlayerService.StateChangeListener listener = new MusicPlayerService.StateChangeListener(this){
+        @Override
+        public void onCurrentTrackChange(File track) {
+            updateUI(track);
+        }
+    };
 }

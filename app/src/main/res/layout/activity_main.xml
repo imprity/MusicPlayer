@@ -11,7 +11,7 @@
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:background="#FFFFFF"
-        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/player_widget"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent">
@@ -22,5 +22,47 @@
             android:layout_height="wrap_content"
             android:orientation="vertical" />
     </ScrollView>
+    <LinearLayout
+        android:visibility="visible"
+        android:id="@+id/player_widget"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        android:layout_width="0dp"
+        android:layout_height="70dp"
+        android:orientation="horizontal"
+        android:clickable="true"
+        android:gravity="center"
+        android:foreground="?android:attr/selectableItemBackground">
+        <ImageView
+            android:id="@+id/player_widget_thumbnail"
+            android:layout_width="50dp"
+            android:layout_height="50dp"
+            android:background="#898FFB"
+            android:scaleType="fitCenter"></ImageView>
+        <TextView
+            android:id="@+id/player_widget_music_name"
+            android:layout_width="200dp"
+            android:layout_height="wrap_content"
+            android:text="music name"
+            android:layout_marginLeft="10dp"
+            android:layout_marginRight="10dp"
+            android:ellipsize="marquee"
+            android:singleLine="true"
+            android:marqueeRepeatLimit="marquee_forever"
+            android:scrollHorizontally="true"
+            android:textSize="10pt"/>
+        <ImageButton
+            android:id="@+id/player_widget_play"
+            android:layout_width="50dp"
+            android:layout_height="50dp"
+            android:scaleType="fitCenter"/>
+        <ImageButton
+            android:id="@+id/player_widget_next"
+            android:layout_width="50dp"
+            android:layout_height="50dp"
+            android:scaleType="fitCenter"/>
+
+    </LinearLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

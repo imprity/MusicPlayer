@@ -87,7 +87,7 @@ public class DirectoryTrackManager{
     }
 
     File getPreviousTrack(File file){
-        if(currentTracks.isEmpty()){
+        if(file == null || currentTracks.isEmpty()){
             return null;
         }
         for(int i=0; i<currentTracks.size(); i++){
@@ -101,7 +101,7 @@ public class DirectoryTrackManager{
     }
 
     File getNextTrack(File file){
-        if(currentTracks.isEmpty()){
+        if(file == null || currentTracks.isEmpty()){
             return null;
         }
         for(int i=0; i<currentTracks.size(); i++){

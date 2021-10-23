@@ -11,7 +11,10 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Color;
+import android.media.MediaMetadataRetriever;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Debug;
@@ -21,6 +24,7 @@ import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -31,6 +35,8 @@ import java.util.Arrays;
 import java.util.Comparator;
 
 public class MainActivity extends AppCompatActivity {
+    private static final String TAG = "MainActivity";
+
     static final int PERMISSION_CODE = 1;
     static final String [] REQUIRED_PERMISSIONS = {
             Manifest.permission.READ_EXTERNAL_STORAGE,
@@ -41,10 +47,63 @@ public class MainActivity extends AppCompatActivity {
     private boolean bound = false;
     private MusicPlayerService musicPlayerService;
 
+    private ViewGroup widget;
+    private ImageView thumbNail;
+    private ImageButton playButton;
+    private ImageButton nextButton;
+    private TextView musicName;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
+        widget = findViewById(R.id.player_widget);
+        thumbNail = findViewById(R.id.player_widget_thumbnail);
+        playButton = findViewById(R.id.player_widget_play);
+        nextButton = findViewById(R.id.player_widget_next);
+        musicName = findViewById(R.id.player_widget_music_name);
+
+        musicName.setSelected(true);
+
+        playButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if(bound){
+                    if(musicPlayerService.isPlaying()){
+                        musicPlayerService.pauseMusic();
+                    }
+                    else{
+                        musicPlayerService.resumeMusic();
+                    }
+                }
+            }
+        });
+
+        nextButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if(bound){
+                    File currentTrack = musicPlayerService.getCurrentTrack();
+                    File nextTrack = DirectoryTrackManager.getInstance().getNextTrack(currentTrack);
+                    if(nextTrack != null){
+                        musicPlayerService.playMusic(nextTrack);
+                    }
+                }
+            }
+        });
+
+        widget.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if(bound){
+                    File currentTrack = musicPlayerService.getCurrentTrack();
+                    if(currentTrack != null){
+                        startTrackPlayer(currentTrack);
+                    }
+                }
+            }
+        });
 
         if(!checkPermission()) {
             requestPermissions(REQUIRED_PERMISSIONS, PERMISSION_CODE);
@@ -65,6 +124,9 @@ public class MainActivity extends AppCompatActivity {
             MusicPlayerService.MusicPlayerBinder binder = (MusicPlayerService.MusicPlayerBinder) _binder;
             musicPlayerService = binder.getService();
             bound = true;
+
+            updateWidget();
+            musicPlayerService.addStateChangeListener(onStateChange);
         }
 
         @Override
@@ -149,17 +211,19 @@ public class MainActivity extends AppCompatActivity {
             view_parent.addView(parentDirectoryEntry);
         }
 
-
         for(File singleFile : files){
+            //generate view
             ViewGroup child = (ViewGroup)layoutInflater.inflate(R.layout.file_entry, view_parent, false);
 
             entries.add(child);
 
+            //get view in child
             TextView file_name_view = (TextView) child.findViewById(R.id.file_name);
             file_name_view.setText(singleFile.getName());
 
             ImageView thumbNail = child.findViewById(R.id.file_thumbnail);
 
+            //set listener
             OnEntryClickListener listener = new OnEntryClickListener();
             listener.file = singleFile;
             child.findViewById(R.id.file_entry_button).setOnClickListener(listener);
@@ -169,6 +233,26 @@ public class MainActivity extends AppCompatActivity {
             }
             else{
                 thumbNail.setImageResource(R.drawable.file_icon);
+                if(musicPlayerService.supportsFormat(singleFile)){
+                    MetaDataGetter.MetaDataRequester requester = new MetaDataGetter.MetaDataRequester(singleFile){
+                        @Override
+                        public void onGotMetaData(Bitmap art){
+                            if(art != null){
+                                runOnUiThread(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        thumbNail.setImageBitmap(art);
+                                    }
+                                });
+                            }
+                        }
+                    };
+
+                    MetaDataGetter.getInstance().requestMetaData(requester);
+                }
+                else{
+                    thumbNail.setImageResource(R.drawable.file_icon);
+                }
             }
 
             view_parent.addView(child);
@@ -186,13 +270,65 @@ public class MainActivity extends AppCompatActivity {
             else {
                 if(bound){
                     if(MusicPlayerService.supportsFormat(file)){
-                        Intent intent = new Intent(MainActivity.this, TrackPlayer.class);
-                        intent.putExtra("CURRENT_TRACK", file.getAbsolutePath());
-                        musicPlayerService.playMusic(file);
-                        MainActivity.this.startActivity(intent);
+                        startTrackPlayer(file);
                     }
                 }
             }
         }
+    }
+
+    private MusicPlayerService.StateChangeListener onStateChange = new MusicPlayerService.StateChangeListener(this){
+        @Override
+        public void onCurrentTrackChange(File track) {
+            updateWidget();
+        }
+    };
+
+    @Override
+    public void onDestroy(){
+        super.onDestroy();
+        if(bound){
+            musicPlayerService.removeStateChangeListener(this);
+        }
+    }
+
+
+    private void updateWidget(){
+        if(bound){
+            File currentTrack = musicPlayerService.getCurrentTrack();
+            if(currentTrack == null){
+                widget.setVisibility(View.GONE);
+                return;
+            }
+            else{
+                widget.setVisibility(View.VISIBLE);
+                MetaDataGetter.MetaDataRequester requester = new MetaDataGetter.MetaDataRequester(currentTrack){
+                    @Override
+                    public void onGotMetaData(Bitmap art) {
+                        if(art != null){
+                            runOnUiThread(new Runnable() {
+                                @Override
+                                public void run() {
+                                    thumbNail.setImageBitmap(art);
+                                }
+                            });
+                        }
+                    }
+                };
+                MetaDataGetter.getInstance().requestMetaData(requester);
+
+                musicName.setText(currentTrack.getName());
+            }
+        }
+        else{
+            widget.setVisibility(View.GONE);
+        }
+    }
+
+    private void startTrackPlayer(File track){
+        Intent intent = new Intent(MainActivity.this, TrackPlayer.class);
+        intent.putExtra("CURRENT_TRACK", track.getAbsolutePath());
+        musicPlayerService.playMusic(track);
+        MainActivity.this.startActivity(intent);
     }
 }

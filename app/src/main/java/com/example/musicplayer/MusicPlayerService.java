@@ -21,15 +21,19 @@ import java.io.IOException;
 import java.security.Provider;
 import java.security.spec.ECField;
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 
 import javax.xml.transform.ErrorListener;
 import javax.xml.transform.TransformerException;
 
 public class MusicPlayerService extends Service {
+    private static final String TAG = "MusicPlayerService";
     private MediaPlayer player = null;
     private boolean player_prepared = false;
 
     private File currentTrack;
+
+    private IdentityHashMap<Object, StateChangeListener> listenerMap = new IdentityHashMap<Object, StateChangeListener>();
 
     public final static String[] supportedFormats = {
             ".mp3",
@@ -106,6 +110,11 @@ public class MusicPlayerService extends Service {
         }
         currentTrack = new File(song.getAbsolutePath());
         player.start();
+
+        for(StateChangeListener listener : listenerMap.values()){
+            listener.onCurrentTrackChange(currentTrack);
+        }
+
         return null;
     }
 
@@ -166,5 +175,29 @@ public class MusicPlayerService extends Service {
             }
         }
         return false;
+    }
+
+    public static class StateChangeListener{
+        private Object listener;
+        public StateChangeListener(Object listener){
+            this.listener = listener;
+        }
+
+        public Object getListeningObject(){
+            return listener;
+        }
+
+        public void onCurrentTrackChange(File track){}
+    }
+
+    public void addStateChangeListener(StateChangeListener listener){
+        if(listenerMap.containsKey(listener.listener)){
+            Log.d(TAG, "Each object can have only one listener");
+        }
+        listenerMap.put(listener.getListeningObject(), listener);
+    }
+
+    public void removeStateChangeListener(Object object){
+        listenerMap.remove(object);
     }
 }
