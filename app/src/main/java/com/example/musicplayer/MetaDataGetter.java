@@ -33,7 +33,7 @@ public class MetaDataGetter {
             Bitmap thumbnail = null;
 
 
-            if(requester.file != null && MusicPlayerService.supportsFormat(requester.file)){
+            if(requester.file != null && MusicPlayer.supportsFormat(requester.file)){
                 File file = requester.file;
 
                 MediaMetadataRetriever mediaMetadataRetriever = new MediaMetadataRetriever();

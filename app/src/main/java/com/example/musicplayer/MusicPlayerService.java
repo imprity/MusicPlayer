@@ -21,6 +21,7 @@ import java.io.IOException;
 import java.security.Provider;
 import java.security.spec.ECField;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.IdentityHashMap;
 
 import javax.xml.transform.ErrorListener;
@@ -31,7 +32,8 @@ public class MusicPlayerService extends Service {
     private MediaPlayer player = null;
     private boolean player_prepared = false;
 
-    private File currentTrack;
+    private int currentTrackIndex = 0;
+    private File[] currentTracks = null;
 
     private IdentityHashMap<Object, StateChangeListener> listenerMap = new IdentityHashMap<Object, StateChangeListener>();
 
@@ -80,7 +82,7 @@ public class MusicPlayerService extends Service {
     }
 
     public long getDuration(){
-        if(player_prepared){
+        if(player_prepared && player != null){
             return player.getDuration();
         }
         else{
@@ -88,14 +90,25 @@ public class MusicPlayerService extends Service {
         }
     }
 
-    public Exception playMusic(File song){
+    public int getCurrentTrackIndex(){
+        return currentTrackIndex;
+    }
 
-        if(currentTrack != null && song.getAbsolutePath() == currentTrack.getAbsolutePath()){
-            return null;
+    public void playMusic(File[] newTracks, int newIndex){
+        if(newTracks == null || newTracks.length <=0 || newIndex < 0 || newIndex >= newTracks.length){
+            return;
         }
+
+        //check if prev song is the same song
+        if(Arrays.deepEquals(newTracks, currentTracks) && currentTrackIndex == newIndex){
+            return;
+        }
+
+        //try to initialize player
+        File song = newTracks[newIndex];
+
         player.reset();
         player_prepared = false;
-        Log.d("received path : ",song.getName());
 
         try {
             player.setDataSource(song.getAbsolutePath());
@@ -106,16 +119,16 @@ public class MusicPlayerService extends Service {
             Log.d("failed to play file : ",e.toString());
             player.reset();
             player_prepared = false;
-            return e;
+            return;
         }
-        currentTrack = new File(song.getAbsolutePath());
         player.start();
 
-        for(StateChangeListener listener : listenerMap.values()){
-            listener.onCurrentTrackChange(currentTrack);
-        }
+        currentTracks = newTracks;
+        currentTrackIndex = newIndex;
 
-        return null;
+        for(StateChangeListener listener : listenerMap.values()){
+            listener.onCurrentTrackChange(getCurrentTrack());
+        }
     }
 
     @Override
@@ -141,10 +154,54 @@ public class MusicPlayerService extends Service {
     }
 
     public File getCurrentTrack(){
-        if(currentTrack != null){
-            return new File(currentTrack.getAbsolutePath());
+        if(currentTracks == null || currentTracks.length <=0 || currentTrackIndex <0 || currentTrackIndex >= currentTracks.length){
+            return null;
+        }
+        return  currentTracks[currentTrackIndex];
+    }
+
+    public File getNextTrack(){
+        if(canGetTrackAt(currentTrackIndex+1)){
+            return currentTracks[currentTrackIndex+1];
         }
         return null;
+    }
+
+    public File getPreviousTrack(){
+        if(canGetTrackAt(currentTrackIndex - 1)){
+            return currentTracks[currentTrackIndex-1];
+        }
+        return null;
+    }
+
+    public File[] getCurrentTracks(){
+        if(currentTracks != null){
+            return currentTracks.clone();
+        }
+        return null;
+    }
+
+    public void playNextTrack(){
+        if(canGetTrackAt(currentTrackIndex+1)){
+            playMusic(currentTracks, currentTrackIndex+1);
+        }
+    }
+
+    public void playPreviousTrack(){
+        if(canGetTrackAt(currentTrackIndex-1)){
+            playMusic(currentTracks, currentTrackIndex-1);
+        }
+    }
+
+    public boolean canGetTrackAt(int index){
+        if(currentTracks == null ||
+            currentTracks.length == 0 ||
+            index < 0 ||
+            index >= currentTracks.length
+        ){
+            return false;
+        }
+        return  true;
     }
 
     @Override

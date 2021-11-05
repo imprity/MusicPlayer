@@ -8,11 +8,18 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
 import android.graphics.Bitmap;
+import android.media.AudioManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.os.Message;
+import android.support.v4.media.MediaBrowserCompat;
+import android.support.v4.media.MediaMetadataCompat;
+import android.support.v4.media.session.MediaControllerCompat;
+import android.support.v4.media.session.MediaSessionCompat;
+import android.support.v4.media.session.PlaybackStateCompat;
+import android.util.Log;
 import android.view.View;
 import android.widget.ImageButton;
 import android.widget.ImageView;
@@ -22,6 +29,7 @@ import android.widget.TextView;
 import java.io.File;
 
 public class TrackPlayer extends AppCompatActivity {
+    private static final String TAG = "TrackPlayer";
     ImageView thumbNail;
     ImageButton prevButton;
     ImageButton nextButton;
@@ -29,13 +37,33 @@ public class TrackPlayer extends AppCompatActivity {
     TextView musicText;
     SeekBar seekBar;
 
-    private boolean bound = false;
-    private MusicPlayerService musicPlayerService;
+    private MediaBrowserCompat mediaBrowser;
+    long currentDuration = 100;
 
-    private boolean touchingSeekBar = false;
+    private final MediaBrowserCompat.ConnectionCallback connectionCallbacks =
+            new MediaBrowserCompat.ConnectionCallback() {
+                @Override
+                public void onConnected() {
+                    // Get the token for the MediaSession
+                    MediaSessionCompat.Token token = mediaBrowser.getSessionToken();
+                    // Create a MediaControllerCompat
+                    MediaControllerCompat mediaController = new MediaControllerCompat(TrackPlayer.this, token);
+                    //Save the controller
+                    MediaControllerCompat.setMediaController(TrackPlayer.this, mediaController);
 
-    //subtracting two cause I'm scared lol
-    private final static int SEEK_BAR_MAX_VALUE = Integer.MAX_VALUE -2;
+                    buildTransportControls();
+                }
+
+                @Override
+                public void onConnectionSuspended() {
+                    Log.d(TAG, "media browser connection suspended");
+                }
+
+                @Override
+                public void onConnectionFailed() {
+                    Log.d(TAG, "media browser connection failed");
+                }
+            };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -51,21 +79,45 @@ public class TrackPlayer extends AppCompatActivity {
 
         musicText.setSelected(true);
 
-        Intent intent = getIntent();
-        File currentTrack = new File(intent.getStringExtra("CURRENT_TRACK"));
+        mediaBrowser = new MediaBrowserCompat(
+                this,
+                new ComponentName(this, MediaPlaybackService.class),
+                connectionCallbacks,
+                null
+        );
+    }
 
-        updateUI(currentTrack);
+    @Override
+    protected void onStart() {
+        super.onStart();
+        mediaBrowser.connect();
+    }
 
+    @Override
+    protected void onResume(){
+        super.onResume();
+        setVolumeControlStream(AudioManager.STREAM_MUSIC);
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        if (MediaControllerCompat.getMediaController(TrackPlayer.this) != null) {
+            MediaControllerCompat.getMediaController(TrackPlayer.this).unregisterCallback(controllerCallback);
+        }
+        mediaBrowser.disconnect();
+    }
+
+    void buildTransportControls() {
+        //MediaControllerCompat controller =
         playButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                if(bound){
-                    if(musicPlayerService.isPlaying()){
-                       musicPlayerService.pauseMusic();
-                    }
-                    else{
-                        musicPlayerService.resumeMusic();
-                    }
+                int pbState = MediaControllerCompat.getMediaController(TrackPlayer.this).getPlaybackState().getState();
+                if (pbState == PlaybackStateCompat.STATE_PLAYING) {
+                    MediaControllerCompat.getMediaController(TrackPlayer.this).getTransportControls().pause();
+                } else {
+                    MediaControllerCompat.getMediaController(TrackPlayer.this).getTransportControls().play();
                 }
             }
         });
@@ -73,145 +125,72 @@ public class TrackPlayer extends AppCompatActivity {
         prevButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                if(bound){
-                    File previousTrack = DirectoryTrackManager.getInstance().getPreviousTrack(musicPlayerService.getCurrentTrack());
-                    if(previousTrack!= null){
-                        musicPlayerService.playMusic(previousTrack);
-                    }
-                }
+                MediaControllerCompat.getMediaController(TrackPlayer.this).getTransportControls().skipToPrevious();
             }
         });
 
         nextButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                if(bound){
-                    File nextTrack = DirectoryTrackManager.getInstance().getNextTrack(musicPlayerService.getCurrentTrack());
-                    if(nextTrack!= null){
-                        musicPlayerService.playMusic(nextTrack);
-                    }
-                }
+                MediaControllerCompat.getMediaController(TrackPlayer.this).getTransportControls().skipToNext();
             }
         });
-
-        seekBar.setMin(0);
-        //arbitrary number
-        seekBar.setMax(SEEK_BAR_MAX_VALUE);
-
-        Handler seekBarHandler = new Handler();
-        seekBarHandler.postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                if(bound){
-                    long pos = musicPlayerService.getCurrentPosition();
-                    long duration = musicPlayerService.getDuration();
-                    if(pos != -1 && duration != -1 && !touchingSeekBar){
-                        double newPos = (Double.valueOf(pos) / Double.valueOf(duration)) * Double.valueOf(SEEK_BAR_MAX_VALUE);
-                        seekBar.setProgress((int)newPos);
-                    }
-                }
-                seekBarHandler.postDelayed(this, 10);
-            }
-        }, 10);
 
         seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                if(fromUser){
-                    if(bound){
-                        long duration = musicPlayerService.getDuration();
-                        if(duration != -1){
-                            double newPos = (Double.valueOf(progress)/Double.valueOf(SEEK_BAR_MAX_VALUE)) * Double.valueOf(duration);
-                            musicPlayerService.seekTo((long)newPos);
-                        }
-                    }
-                }
             }
 
             @Override
             public void onStartTrackingTouch(SeekBar seekBar) {
-                touchingSeekBar = true;
+
             }
 
             @Override
             public void onStopTrackingTouch(SeekBar seekBar) {
-                touchingSeekBar = false;
+                MediaControllerCompat controller =MediaControllerCompat.getMediaController(TrackPlayer.this);
+                PlaybackStateCompat pbState = controller.getPlaybackState();
+                if((pbState.getActions() & PlaybackStateCompat.ACTION_SEEK_TO) > 0){
+                    int progress = seekBar.getProgress();
+                    double normalized = (double) progress / (double) seekBar.getMax();
+                    long newPos = (long)Math.floor(normalized * (double) currentDuration);
+                    controller.getTransportControls().seekTo(newPos);
+                }
             }
         });
+
+        MediaControllerCompat mediaController = MediaControllerCompat.getMediaController(TrackPlayer.this);
+        mediaController.registerCallback(controllerCallback);
+
+        MediaMetadataCompat metadata = mediaController.getMetadata();
+        updateUI(metadata);
     }
 
-    private ServiceConnection connection = new ServiceConnection() {
-        @Override
-        public void onServiceConnected(ComponentName className,
-                                       IBinder _binder) {
-            // We've bound to LocalService, cast the IBinder and get LocalService instance
-            MusicPlayerService.MusicPlayerBinder binder = (MusicPlayerService.MusicPlayerBinder) _binder;
-            musicPlayerService = binder.getService();
-            bound = true;
 
-            musicPlayerService.addStateChangeListener(listener);
-        }
+    MediaControllerCompat.Callback controllerCallback =
+            new MediaControllerCompat.Callback() {
+                @Override
+                public void onMetadataChanged(MediaMetadataCompat metadata) {
+                    Log.d(TAG, "Meta data changed :\n"+metadata.toString());
+                    updateUI(metadata);
+                    Log.d(TAG, "current duration: " + Long.toString(currentDuration));
+                }
 
-        @Override
-        public void onServiceDisconnected(ComponentName arg0) {
-            bound = false;
-        }
-    };
-
-    @Override
-    protected void onStart(){
-        super.onStart();
-        Intent intent = new Intent(getApplicationContext(), MusicPlayerService.class);
-        bindService(intent, connection, Context.BIND_AUTO_CREATE);
-    }
-
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        if(bound){
-            musicPlayerService.removeStateChangeListener(this);
-        }
-    }
-
-    class SeekBarThread extends Thread{
-        public Handler handler;
-
-        public void run() {
-            Looper.prepare();
-
-            handler = new Handler(Looper.myLooper()) {
-                public void handleMessage(Message msg) {
-                    // process incoming messages here
+                @Override
+                public void onPlaybackStateChanged(PlaybackStateCompat state) {
+                    long currentPosition = state.getPosition();
+                    double normalized = (double)currentPosition / (double)currentDuration;
+                    int maxValue = seekBar.getMax();
+                    seekBar.setProgress((int)Math.floor((double) maxValue * normalized));
                 }
             };
 
-            Looper.loop();
+    private void updateUI(MediaMetadataCompat metadata){
+        Bitmap albumArt = metadata.getBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART);
+        if(albumArt != null){
+            thumbNail.setImageBitmap(albumArt);
         }
+        currentDuration = metadata.getLong(MediaMetadataCompat.METADATA_KEY_DURATION);
+        musicText.setText(metadata.getDescription().getTitle());
     }
-
-    private void updateUI(File track){
-        musicText.setText(track.getName());
-
-        MetaDataGetter.MetaDataRequester requester = new MetaDataGetter.MetaDataRequester(track){
-            @Override
-            public void onGotMetaData(Bitmap art) {
-                if(art != null){
-                    runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            thumbNail.setImageBitmap(art);
-                        }
-                    });
-                }
-            }
-        };
-        MetaDataGetter.getInstance().requestMetaData(requester);
-    }
-
-    private MusicPlayerService.StateChangeListener listener = new MusicPlayerService.StateChangeListener(this){
-        @Override
-        public void onCurrentTrackChange(File track) {
-            updateUI(track);
-        }
-    };
 }

@@ -1,10 +1,5 @@
 package com.example.musicplayer;
 
-import android.content.Intent;
-import android.os.IBinder;
-
-import androidx.annotation.Nullable;
-
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -21,8 +16,9 @@ public class DirectoryTrackManager{
 
 
     private File currentDirectory = null;
+    private File previousDirectory = null;
+    private File parentFile = null;
     private File[] currentFiles = null;
-    private ArrayList<File> currentTracks = new ArrayList<File>();
 
     private static class FileSorter implements Comparator<File> {
         @Override
@@ -55,70 +51,41 @@ public class DirectoryTrackManager{
         return new File(currentDirectory.getAbsolutePath());
     }
 
-    public File[] getCurrentTracks(){
-        return (File[]) currentTracks.toArray();
-    }
-
     public boolean openDirectory(File directory){
         try {
             if (directory != null && directory.exists() && directory.isDirectory()) {
                 File[] files = directory.listFiles();
 
                 if(files != null){
+                    previousDirectory = currentDirectory;
                     currentDirectory = directory;
+
                     Arrays.sort(files, new FileSorter());
                     currentFiles = files;
 
-                    currentTracks.clear();
-
-                    for(File file : currentFiles){
-                        if(MusicPlayerService.supportsFormat(file)){
-                            currentTracks.add(file);
-                        }
-                    }
+                    parentFile = currentDirectory.getParentFile();
                     return true;
                 }
             }
         }
         catch (Exception e){
+            e.printStackTrace();
             return false;
         }
         return false;
     }
 
-    File getPreviousTrack(File file){
-        if(file == null || currentTracks.isEmpty()){
-            return null;
-        }
-        for(int i=0; i<currentTracks.size(); i++){
-            if(currentTracks.get(i).getAbsolutePath() == file.getAbsolutePath()){
-                if(i >= 1){
-                    return currentTracks.get(i-1);
-                }
-            }
-        }
-        return null;
-    }
-
-    File getNextTrack(File file){
-        if(file == null || currentTracks.isEmpty()){
-            return null;
-        }
-        for(int i=0; i<currentTracks.size(); i++){
-            if(currentTracks.get(i).getAbsolutePath() == file.getAbsolutePath()){
-                if(i < currentTracks.size()-1){
-                    return currentTracks.get(i+1);
-                }
-            }
-        }
-        return null;
-    }
-
     public boolean openParent(){
-        if (currentDirectory != null && currentDirectory.exists() && currentDirectory.isDirectory()){
-            File parent = currentDirectory.getParentFile();
-            return openDirectory(parent);
+        if (parentFile != null && parentFile.isDirectory()){
+            return openDirectory(parentFile);
         }
         return false;
+    }
+
+    File getParentFile(){
+        if(parentFile == null){
+            return null;
+        }
+        return new File(parentFile.getAbsolutePath());
     }
 }
